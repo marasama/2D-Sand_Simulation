@@ -6,20 +6,36 @@
 
 #define HEIGHT 800
 #define WIDTH 900
-#define PARTICLE_SIZE 10
+#define SAND 1
+#define WATER 2
+#define PARTICLE_SIZE 5
 #define PARTICLE_WIDTH WIDTH / PARTICLE_SIZE
 #define PARTICLE_HEIGHT HEIGHT/ PARTICLE_SIZE
-#define PARTICLE_COLOR 0xFFFFBF00
+#define SAND_COLOR 0xFFFFBF00
+#define WATER_COLOR 0xFF0000FF
 
 typedef unsigned char byte;
 
+typedef struct
+{
+	byte particles[PARTICLE_WIDTH][PARTICLE_HEIGHT];
+	byte mode;
+} Particle;
+
 void drawGrid(SDL_Surface *screen);
 
-void drawParticles(SDL_Surface *screen, byte (*particles)[PARTICLE_WIDTH][PARTICLE_HEIGHT]);
+void drawParticles(SDL_Surface *screen, Particle *particles);
 
-void proccessInputs(unsigned char* running, SDL_Event* event, byte (*particles)[PARTICLE_WIDTH][PARTICLE_HEIGHT]);
+void proccessInputs(unsigned char* running, SDL_Event* event, Particle *particles);
 
-void simulate(byte (*particles)[PARTICLE_WIDTH][PARTICLE_HEIGHT]);
+void simulate(Particle *particles);
+
+void swap(byte *a, byte *b)
+{
+	byte tmp = *a;
+	*a = *b;
+	*b = tmp;
+}
 
 void AID_PutPixel(SDL_Surface *surface, int x, int y, uint32_t color)
 {
@@ -70,16 +86,16 @@ int main()
 
 	unsigned char running = 1;
 
-	byte particles[PARTICLE_WIDTH][PARTICLE_HEIGHT];
+	Particle particles;
 
-	memset(particles, 0, PARTICLE_WIDTH * PARTICLE_HEIGHT);
+	memset(particles.particles, 0, PARTICLE_WIDTH * PARTICLE_HEIGHT);
+
+	particles.mode = SAND;
 
 	while (running)
 	{
 		while (SDL_PollEvent(&event))
-		{
 			proccessInputs(&running, &event, &particles);
-		}
 		AID_PutRectangle(screen, 0, 0, WIDTH, HEIGHT, 0xFF000000);
 		simulate(&particles);
 		drawParticles(screen, &particles);
@@ -92,23 +108,31 @@ int main()
 	return (0);
 }
 
-void putParticles(byte (*particles)[PARTICLE_WIDTH][PARTICLE_HEIGHT], int x, int y, int size)
+void putParticles(Particle *particles, int x, int y, int size)
 {
 	for (int i = x - size / 2; i < x + size / 2; i++)
 	{
 		for (int j = y - size / 2; j < y + size / 2; j++)
 		{
 			if (i >= 0 && i < PARTICLE_WIDTH && j >= 0 && j < PARTICLE_HEIGHT)
-				(*particles)[i][j] = 1;
+				particles->particles[i][j] = particles->mode;
 		}
 	}
 }
 
-void proccessInputs(unsigned char* running, SDL_Event* event, byte (*particles)[PARTICLE_WIDTH][PARTICLE_HEIGHT])
+void proccessInputs(unsigned char* running, SDL_Event* event, Particle *particles)
 {
 	if (event->type == SDL_KEYDOWN && event->key.keysym.sym == SDLK_ESCAPE)
 	{
 		*running = 0;
+	}
+	if (event->type == SDL_KEYDOWN && event->key.keysym.sym == SDLK_s)
+	{
+		particles->mode = SAND;
+	}
+	if (event->type == SDL_KEYDOWN && event->key.keysym.sym == SDLK_w)
+	{
+		particles->mode = WATER;
 	}
 	if (event->type == SDL_QUIT)
 	{
@@ -119,97 +143,78 @@ void proccessInputs(unsigned char* running, SDL_Event* event, byte (*particles)[
 	{
 		if (event->button.x >= 0 && event->button.x < WIDTH && event->button.y >= 0 && event->button.y < HEIGHT)
 		{
-			putParticles(particles, event->button.x / PARTICLE_SIZE, event->button.y / PARTICLE_SIZE, 10);
+			putParticles(particles, event->button.x / PARTICLE_SIZE, event->button.y / PARTICLE_SIZE, 20);
 		}
 	}
 }
 
-void calculateParticles(byte (*particles)[PARTICLE_WIDTH][PARTICLE_HEIGHT], unsigned int i, unsigned int j)
+void calculateSand(Particle *particles, int i, int j)
 {
-	if ((*particles)[i][j] == 1 && j + 1 < PARTICLE_HEIGHT)
+	if (particles->particles[i][j] == 1 && j + 1 < PARTICLE_HEIGHT)
 	{
-		if ((*particles)[i][j + 1] == 0)
+		if (particles->particles[i][j + 1] != 1)
+			swap(&particles->particles[i][j], &particles->particles[i][j + 1]);
+		else if (particles->particles[i + 1][j + 1] != 1 \
+				&& particles->particles[i - 1][j + 1] != 1 \
+				&& particles->particles[i + 1][j] != 1)
 		{
-			(*particles)[i][j] = 0;
-			(*particles)[i][j + 1] = 1;
-		}
-		else if ((*particles)[i + 1][j + 1] == 0 \
-				&& (*particles)[i - 1][j + 1] == 0 \
-				&& (*particles)[i + 1][j] == 0)
-		{
-			(*particles)[i][j] = 0;
 			if (rand() % 2 == 0 && i + 1 < PARTICLE_WIDTH) 
-				(*particles)[i + 1][j + 1] = 1;
+				swap(&particles->particles[i][j], &particles->particles[i + 1][j + 1]);
 			else if (i - 1 >= 0) 
-				(*particles)[i - 1][j + 1] = 1;
+				swap(&particles->particles[i][j], &particles->particles[i - 1][j + 1]);
 		}
-		else if ((*particles)[i + 1][j + 1] == 0 && (*particles)[i + 1][j] == 0 && i + 1 < PARTICLE_WIDTH) 
-		{
-			(*particles)[i][j] = 0;
-			(*particles)[i + 1][j + 1] = 1;
-		}
-		else if ((*particles)[i - 1][j + 1] == 0 && (*particles)[i - 1][j] == 0 && i - 1 >= 0 )
-		{
-			(*particles)[i][j] = 0;
-			(*particles)[i - 1][j + 1] = 1;
-		}
-
+		else if (particles->particles[i + 1][j + 1] != 1 && i + 1 < PARTICLE_WIDTH) 
+			swap(&particles->particles[i][j], &particles->particles[i + 1][j + 1]);
+		else if (particles->particles[i - 1][j + 1] != 1 && i - 1 >= 0 )
+			swap(&particles->particles[i][j], &particles->particles[i - 1][j + 1]);
 	}
 }
 
-void calculateWater(byte (*particles)[PARTICLE_WIDTH][PARTICLE_HEIGHT], unsigned int i, unsigned int j)
+void calculateWater(Particle *particles, int i, int j)
 {
-	if ((*particles)[i][j] == 1 && j + 1 < PARTICLE_HEIGHT)
+	if (particles->particles[i][j] == 2 && j + 1 < PARTICLE_HEIGHT)
 	{
-		if ((*particles)[i][j + 1] == 0)
+		if (particles->particles[i][j + 1] == 0)
+			swap(&particles->particles[i][j], &particles->particles[i][j + 1]);
+		else if (particles->particles[i][j + 1] != 0 && \
+				i + 1 < PARTICLE_WIDTH && \
+				particles->particles[i + 1][j] == 0 && \
+				particles->particles[i - 1][j] == 0)
 		{
-			(*particles)[i][j] = 0;
-			(*particles)[i][j + 1] = 1;
+			if (rand() % 2 == 0)
+				swap(&particles->particles[i][j], &particles->particles[i + 1][j]);
+			else
+				swap(&particles->particles[i][j], &particles->particles[i - 1][j]);
 		}
-		else if ((*particles)[i + 1][j + 1] == 0 \
-				&& (*particles)[i - 1][j + 1] == 0 \
-				&& (*particles)[i + 1][j] == 0)
-		{
-			(*particles)[i][j] = 0;
-			if (rand() % 2 == 0 && i + 1 < PARTICLE_WIDTH) 
-				(*particles)[i + 1][j + 1] = 1;
-			else if (i - 1 >= 0) 
-				(*particles)[i - 1][j + 1] = 1;
-		}
-		else if ((*particles)[i + 1][j + 1] == 0 && (*particles)[i + 1][j] == 0 && i + 1 < PARTICLE_WIDTH) 
-		{
-			(*particles)[i][j] = 0;
-			(*particles)[i + 1][j + 1] = 1;
-		}
-		else if ((*particles)[i - 1][j + 1] == 0 && (*particles)[i - 1][j] == 0 && i - 1 >= 0 )
-		{
-			(*particles)[i][j] = 0;
-			(*particles)[i - 1][j + 1] = 1;
-		}
-
+		else if (particles->particles[i + 1][j] == 0 && i + 1 < PARTICLE_WIDTH) 
+			swap(&particles->particles[i][j], &particles->particles[i + 1][j]);
+		else if (particles->particles[i - 1][j] == 0 && i - 1 >= 0 )
+			swap(&particles->particles[i][j], &particles->particles[i - 1][j]);
 	}
 }
 
-void simulate(byte (*particles)[PARTICLE_WIDTH][PARTICLE_HEIGHT])
+void simulate(Particle *particles)
 {
 	for (int i = PARTICLE_WIDTH - 1; i >= 0; i--)
 	{
 		for (int j =  PARTICLE_HEIGHT - 1; j >= 0; j--)
 		{
-			calculateParticles(particles, i, j);
 			calculateWater(particles, i, j);
+			calculateSand(particles, i, j);
 		}
 	}
 }
 
-void drawParticles(SDL_Surface *screen, byte (*particles)[PARTICLE_WIDTH][PARTICLE_HEIGHT])
+void drawParticles(SDL_Surface *screen, Particle *particles)
 {
 	for (unsigned int i = 0; i < PARTICLE_WIDTH; i++)
 	{
 		for (unsigned int j = 0; j < PARTICLE_HEIGHT; j++)
 		{
-			if ((*particles)[i][j] == 1)
-				AID_PutRectangle(screen, i * PARTICLE_SIZE, j * PARTICLE_SIZE, PARTICLE_SIZE, PARTICLE_SIZE, PARTICLE_COLOR);
+			if (particles->particles[i][j] == 1)
+				AID_PutRectangle(screen, i * PARTICLE_SIZE, j * PARTICLE_SIZE, PARTICLE_SIZE, PARTICLE_SIZE, SAND_COLOR);
+			if (particles->particles[i][j] == 2)
+				AID_PutRectangle(screen, i * PARTICLE_SIZE, j * PARTICLE_SIZE, PARTICLE_SIZE, PARTICLE_SIZE, WATER_COLOR);
 		}
 	}
 }
